@@ -49,9 +49,52 @@ const DEFAULT_COURSES = [
   { id: 9, code: "PRW201", name: "Lập trình ứng dụng Web", credits: 3, semester: 4 },
   { id: 10, code: "MOB201", name: "Lập trình thiết bị di động", credits: 3, semester: 5 },
   { id: 11, code: "AFI201", name: "Trí tuệ nhân tạo và Ứng dụng", credits: 3, semester: 6 },
-  { id: 12, code: "PRM301", name: "Quản trị dự án phần mềm", credits: 3, semester: 7 },
-  { id: 13, code: "FIP402", name: "Đồ án tốt nghiệp / Khóa luận", credits: 10, semester: 9 },
+  { id: 12, code: "CMB105", name: "Kỹ năng giao tiếp & Thuyết trình chuyên môn", credits: 2, semester: 2 },
+  { id: 13, code: "EIT301", name: "Tiếng Anh chuyên ngành Công nghệ thông tin", credits: 3, semester: 3 },
+  { id: 14, code: "PRM301", name: "Quản trị dự án phần mềm", credits: 3, semester: 7 },
+  { id: 15, code: "FIP402", name: "Đồ án tốt nghiệp / Khóa luận", credits: 10, semester: 9 },
 ];
+
+const DEFAULT_CLOS = [
+  { id: 1, code: "MTA103-CLO1", description: "Vận dụng kiến thức giải tích và đại số tuyến tính vào tính toán", courseCode: "MTA103" },
+  { id: 2, code: "ITP101-CLO1", description: "Nắm vững cú pháp cơ bản và giải thuật lập trình", courseCode: "ITP101" },
+  { id: 3, code: "ITP101-CLO2", description: "Kỹ năng viết mã nguồn sạch, gỡ lỗi và tổ chức hàm", courseCode: "ITP101" },
+  { id: 4, code: "OOP201-CLO1", description: "Vận dụng các đặc tính hướng đối tượng (Kế thừa, Đa hình)", courseCode: "OOP201" },
+  { id: 5, code: "DSA201-CLO1", description: "Phân tích độ phức tạp và áp dụng cấu trúc dữ liệu tối ưu", courseCode: "DSA201" },
+  { id: 6, code: "CAO201-CLO1", description: "Hiểu rõ kiến trúc máy tính, vi xử lý và hệ thống nhớ", courseCode: "CAO201" },
+  { id: 7, code: "DBS201-CLO1", description: "Thiết kế mô hình dữ liệu ERD và viết truy vấn SQL an toàn", courseCode: "DBS201" },
+  { id: 8, code: "SWE201-CLO1", description: "Áp dụng quy trình Agile/Scrum, kiểm thử phần mềm và quản lý Git", courseCode: "SWE201" },
+  { id: 9, code: "PRW201-CLO1", description: "Xây dựng ứng dụng Web hoàn chỉnh (Frontend + Backend RESTful)", courseCode: "PRW201" },
+  { id: 10, code: "MOB201-CLO1", description: "Phát triển và triển khai ứng dụng di động đa nền tảng", courseCode: "MOB201" },
+  { id: 11, code: "AFI201-CLO1", description: "Ứng dụng các thuật toán học máy và trí tuệ nhân tạo vào thực tế", courseCode: "AFI201" },
+  { id: 12, code: "CMB105-CLO1", description: "Kỹ năng thuyết trình, giao tiếp và viết báo cáo chuyên môn", courseCode: "CMB105" },
+  { id: 13, code: "EIT301-CLO1", description: "Đọc hiểu tài liệu và giao tiếp Tiếng Anh kỹ thuật chuyên ngành CNTT", courseCode: "EIT301" },
+  { id: 14, code: "PRM301-CLO1", description: "Lập kế hoạch, quản trị tiến độ và kiểm soát rủi ro dự án phần mềm", courseCode: "PRM301" },
+  { id: 15, code: "FIP402-CLO1", description: "Tự nghiên cứu, phát triển và bảo vệ khóa luận tốt nghiệp trước hội đồng", courseCode: "FIP402" },
+];
+
+const DEFAULT_MATRIX_DATA: Record<string, number> = {
+  // PLO1: Kiến thức Đại cương & Nền tảng
+  "MTA103-PLO1": 2, "PEM101-PLO1": 1, "ITP101-PLO1": 1,
+  // PLO2: Cơ sở CNTT & Máy tính
+  "CAO201-PLO2": 2, "DBS201-PLO2": 2, "ITP101-PLO2": 1,
+  // PLO3: Phân tích, Thiết kế & Phát triển Phần mềm
+  "ITP101-PLO3": 1, "OOP201-PLO3": 2, "DSA201-PLO3": 2, "SWE201-PLO3": 3, "PRW201-PLO3": 3, "MOB201-PLO3": 3, "FIP402-PLO3": 3,
+  // PLO4: Chuyên sâu Công nghệ tiên tiến
+  "AFI201-PLO4": 3, "MOB201-PLO4": 2, "FIP402-PLO4": 3,
+  // PLO5: Kỹ năng Lập trình & Kỹ thuật Phần mềm (Bổ sung đầy đủ)
+  "ITP101-PLO5": 1, "OOP201-PLO5": 2, "DSA201-PLO5": 2, "SWE201-PLO5": 3, "PRW201-PLO5": 3, "MOB201-PLO5": 3,
+  // PLO6: Tư duy Phân tích & Giải quyết vấn đề
+  "DSA201-PLO6": 2, "SWE201-PLO6": 3, "AFI201-PLO6": 3, "FIP402-PLO6": 3,
+  // PLO7: Kỹ năng Ngoại ngữ & Giao tiếp Chuyên môn (Bổ sung đầy đủ)
+  "CMB105-PLO7": 2, "EIT301-PLO7": 2, "PRM301-PLO7": 2, "FIP402-PLO7": 3,
+  // PLO8: Kỹ năng Làm việc nhóm & Quản lý Dự án
+  "SWE201-PLO8": 2, "PRM301-PLO8": 3, "FIP402-PLO8": 3,
+  // PLO9: Tác phong Nghề nghiệp & Đạo đức CNTT
+  "PEM101-PLO9": 1, "SWE201-PLO9": 2, "FIP402-PLO9": 3,
+  // PLO10: Tự học & Thích ứng Chuyển đổi số
+  "AFI201-PLO10": 2, "FIP402-PLO10": 3,
+};
 
 function MatrixPageContent() {
   const cohorts = generateCohorts();
@@ -194,6 +237,11 @@ function MatrixPageContent() {
     return DEFAULT_COURSES;
   };
 
+  const getEffectiveClos = () => {
+    if (modalMajor?.clos && modalMajor.clos.length > 0) return modalMajor.clos;
+    return DEFAULT_CLOS;
+  };
+
   const cleanMajorName = () => {
     const raw = modalMajor?.majorName || modalMajor?.name || modalMajor?.majorCode || "Công nghệ thông tin";
     return raw.replace(/^Ngành\s+/i, '');
@@ -214,8 +262,8 @@ function MatrixPageContent() {
   // Callback xuất ma trận trong modal ra Excel
   const handleExportModalMatrix = () => {
     if (!modalMajor) return;
-    const plos = modalMajor.plos || [];
-    const clos = modalMajor.clos || [];
+    const plos = getEffectivePlos();
+    const clos = getEffectiveClos();
     let parsedMatrix: any = {};
     if (modalMajor.matrixData) {
       try {
@@ -233,6 +281,9 @@ function MatrixPageContent() {
         if (!levelNum && plo.matrices) {
           const m = plo.matrices.find((mat: any) => mat.cloId === clo.id);
           if (m) levelNum = m.level;
+        }
+        if (!levelNum) {
+          levelNum = DEFAULT_MATRIX_DATA[`${matchCourseCode}-${plo.code}`] ?? DEFAULT_MATRIX_DATA[`${clo.code}-${plo.code}`] ?? null;
         }
         row[plo.code] = levelNum === 1 ? "I" : levelNum === 2 ? "R" : levelNum === 3 ? "M" : "";
       });
@@ -710,7 +761,7 @@ function MatrixPageContent() {
                           <th className="p-3 text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider bg-slate-50 min-w-[120px] sticky left-0 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r">
                             Mã CLO \ PLO
                           </th>
-                          {(modalMajor?.plos || []).map((plo: any) => (
+                          {getEffectivePlos().map((plo: any) => (
                             <th key={plo.id} className="p-3 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wider min-w-[80px]" title={plo.description}>
                               {plo.code}
                             </th>
@@ -718,32 +769,29 @@ function MatrixPageContent() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {(!modalMajor?.clos || modalMajor.clos.length === 0) ? (
-                          <tr>
-                            <td colSpan={(modalMajor?.plos?.length || 0) + 1} className="p-8 text-center text-slate-400 text-sm">
-                              Không có dữ liệu ma trận (Chưa định nghĩa PLO/CLO)
+                        {getEffectiveClos().map((clo: any) => (
+                          <tr key={clo.id} className="hover:bg-slate-50/50">
+                            <td className="p-3 text-[12px] font-bold text-slate-700 bg-white sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r" title={clo.description}>
+                              {clo.code}
                             </td>
-                          </tr>
-                        ) : (
-                          modalMajor.clos.map((clo: any) => (
-                            <tr key={clo.id} className="hover:bg-slate-50/50">
-                              <td className="p-3 text-[12px] font-bold text-slate-700 bg-white sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] border-r" title={clo.description}>
-                                {clo.code}
-                              </td>
-                              {(modalMajor?.plos || []).map((plo: any) => {
-                                let levelNum = null;
-                                if (modalMajor?.matrixData) {
-                                  try {
-                                    const parsed = typeof modalMajor.matrixData === "string" ? JSON.parse(modalMajor.matrixData) : modalMajor.matrixData;
-                                    const matchCourseCode = clo.code.split("-")[0];
-                                    levelNum = parsed[`${matchCourseCode}-${plo.code}`] ?? parsed[`${clo.code}-${plo.code}`] ?? null;
-                                  } catch (e) {}
-                                }
-                                if (!levelNum && plo.matrices) {
-                                  const m = plo.matrices.find((mat: any) => mat.cloId === clo.id);
-                                  if (m) levelNum = m.level;
-                                }
-                                const val = levelNum === 1 ? "I" : levelNum === 2 ? "R" : levelNum === 3 ? "M" : null;
+                            {getEffectivePlos().map((plo: any) => {
+                              let levelNum = null;
+                              if (modalMajor?.matrixData) {
+                                try {
+                                  const parsed = typeof modalMajor.matrixData === "string" ? JSON.parse(modalMajor.matrixData) : modalMajor.matrixData;
+                                  const matchCourseCode = clo.code.split("-")[0];
+                                  levelNum = parsed[`${matchCourseCode}-${plo.code}`] ?? parsed[`${clo.code}-${plo.code}`] ?? null;
+                                } catch (e) {}
+                              }
+                              if (!levelNum && plo.matrices) {
+                                const m = plo.matrices.find((mat: any) => mat.cloId === clo.id);
+                                if (m) levelNum = m.level;
+                              }
+                              if (!levelNum) {
+                                const matchCourseCode = clo.code.split("-")[0];
+                                levelNum = DEFAULT_MATRIX_DATA[`${matchCourseCode}-${plo.code}`] ?? DEFAULT_MATRIX_DATA[`${clo.code}-${plo.code}`] ?? null;
+                              }
+                              const val = levelNum === 1 ? "I" : levelNum === 2 ? "R" : levelNum === 3 ? "M" : null;
                                 if (!val) {
                                   return (
                                     <td key={plo.id} className="p-3 text-center align-middle text-slate-300 text-[12px]">
@@ -772,7 +820,7 @@ function MatrixPageContent() {
                               })}
                             </tr>
                           ))
-                        )}
+                        }
                       </tbody>
                     </table>
                   </div>

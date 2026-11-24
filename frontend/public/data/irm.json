@@ -51,7 +51,7 @@
     "DANH SÁCH CHUẨN ĐẦU RA PLO KÈM MỨC ĐỘ ĐÁNH GIÁ (I, R, M)": "PLO5",
     "__EMPTY": "Kỹ năng Lập trình & Kỹ thuật Phần mềm",
     "__EMPTY_1": "Thành thạo kỹ năng viết mã nguồn sạch (clean code), gỡ lỗi, kiểm thử phần mềm (Testing), quản lý phiên bản mã nguồn (Git) và triển khai ứng dụng trên các nền tảng đa dạng (Desktop, Web, Mobile, Cloud).",
-    "__EMPTY_2": "BJP201, PRW201, SOT301, NEP301, AIP202, SOP301",
+    "__EMPTY_2": "ITP101, OOP201, DSA201, PRW201, MOB201, SWE201, BJP201, SOT301, NEP301, AIP202, SOP301",
     "__EMPTY_3": "M (Mastery)",
     "__EMPTY_4": "Thành thạo kỹ thuật lập trình, gỡ lỗi & kiểm thử chất lượng"
   },
@@ -67,7 +67,7 @@
     "DANH SÁCH CHUẨN ĐẦU RA PLO KÈM MỨC ĐỘ ĐÁNH GIÁ (I, R, M)": "PLO7",
     "__EMPTY": "Kỹ năng Ngoại ngữ & Giao tiếp Chuyên môn",
     "__EMPTY_1": "Sử dụng hiệu quả Tiếng Anh (hoặc Tiếng Nhật / Tiếng Hàn) trong giao tiếp, đọc hiểu tài liệu kỹ thuật, viết báo cáo giải pháp và thuyết trình chuyên môn trước đối tác, hội đồng hoặc khách hàng.",
-    "__EMPTY_2": "BAE101-BAE104, EIT301-EIT302, BAJ101-INJ202, BAK101-INK302, CMB105",
+    "__EMPTY_2": "EIT301, CMB105, PRM301, FIP402, BAE101, BAE102, BAE103, BAE104, EIT302, BAJ101, INJ202, BAK101, INK302",
     "__EMPTY_3": "R (Reinforce)",
     "__EMPTY_4": "Củng cố phản xạ giao tiếp & báo cáo kỹ thuật đa ngôn ngữ"
   },
