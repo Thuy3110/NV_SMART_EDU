@@ -248,7 +248,7 @@ export class StatisticsService {
       }),
     ]);
 
-    // Chọn ngành theo filter hoặc mặc định ngành đầu tiên
+    // Chọn ngành theo filter hoặc mặc định ngành có dữ liệu PLO đầu tiên (tránh ngành rỗng)
     const currentMajor =
       (majorCode
         ? majors.find(
@@ -257,6 +257,7 @@ export class StatisticsService {
             String(m.id) === majorCode.trim(),
         )
         : null) ||
+      majors.find((m) => m.plos.length > 0) ||
       majors[0] ||
       null;
 
@@ -388,6 +389,14 @@ export class StatisticsService {
       };
     });
 
+    const totalPlo = plos.length > 0 ? plos.length : 1;
+    const scoreSpectrum = [
+      { range: "< 65% (Chưa đạt)", label: "Chưa đạt", count: countYeu, percentage: Math.round((countYeu / totalPlo) * 100), color: "#ef4444" },
+      { range: "65% - 74% (Cần cải thiện)", label: "Cần cải thiện", count: plos.filter((p) => p.status === "Cần cải thiện").length, percentage: Math.round((plos.filter((p) => p.status === "Cần cải thiện").length / totalPlo) * 100), color: "#f59e0b" },
+      { range: "75% - 84% (Đạt / Tốt)", label: "Tốt", count: countTot, percentage: Math.round((countTot / totalPlo) * 100), color: "#10b981" },
+      { range: "≥ 85% (Xuất sắc)", label: "Xuất sắc", count: countXuatSac, percentage: Math.round((countXuatSac / totalPlo) * 100), color: "#881337" },
+    ];
+
     return {
       studentCount,
       ploCount: plos.length,
@@ -407,6 +416,7 @@ export class StatisticsService {
       academicYears: formattedAcademicYears,
       majors: majorStats,
       plos,
+      scoreSpectrum,
       resultDistribution: {
         achieved: plos.filter((p) => p.status === "Đạt").length,
         notAchieved: plos.filter((p) => p.status !== "Đạt").length,

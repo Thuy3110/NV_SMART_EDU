@@ -9,200 +9,156 @@ async function findOrCreatePlo(majorId: number, code: string, description: strin
   });
 }
 
-async function findOrCreateClo(majorId: number, code: string, description: string) {
-  const existing = await prisma.cLO.findFirst({ where: { majorId, code } });
-  return existing ?? prisma.cLO.create({ data: { majorId, code, description } });
-}
-
 async function main() {
-  const program = await prisma.program.upsert({
-    where: { code: 'DEMO-CTDT' },
-    update: { name: 'Chương trình đào tạo mẫu SMART-EDU' },
-    create: {
-      code: 'DEMO-CTDT',
-      name: 'Chương trình đào tạo mẫu SMART-EDU',
-      description: 'Dữ liệu minh họa phục vụ kiểm thử hệ thống, không phải dữ liệu chính thức của nhà trường.',
-    },
-  });
-
-  const major = await prisma.major.upsert({
-    where: { code: 'DEMO-CNTT' },
-    update: { name: 'Ngành mẫu Công nghệ thông tin', programId: program.id },
-    create: {
-      code: 'DEMO-CNTT',
-      name: 'Ngành mẫu Công nghệ thông tin',
-      description: 'Ngành mẫu dùng để kiểm thử chuỗi dữ liệu giáo dục.',
-      programId: program.id,
-    },
-  });
-
+  // 1. Đảm bảo năm học 2025 tồn tại
   const academicYear = await prisma.academicYear.upsert({
     where: { year: 2025 },
     update: {},
     create: { year: 2025 },
   });
-  await prisma.majorYear.upsert({
-    where: { majorId_academicYearId: { majorId: major.id, academicYearId: academicYear.id } },
-    update: {},
-    create: { majorId: major.id, academicYearId: academicYear.id },
+
+  // 2. Tìm ngành chính thức Công nghệ thông tin (CNTT)
+  const cntt = await prisma.major.findUnique({
+    where: { code: 'CNTT' },
+    include: {
+      students: true,
+      plos: { orderBy: { code: 'asc' } },
+    },
   });
 
-  const legacyCourse = await prisma.course.findUnique({ where: { code: 'DEMO-MH02' } });
-  const currentCourse = await prisma.course.findUnique({ where: { code: 'MH001' } });
-  if (legacyCourse && !currentCourse) {
-    await prisma.course.update({ where: { id: legacyCourse.id }, data: { code: 'MH001' } });
+  if (!cntt) {
+    console.error('Không tìm thấy ngành CNTT trong cơ sở dữ liệu!');
+    return;
   }
 
-  const courses = await Promise.all([
-    prisma.course.upsert({
-      where: { code: 'DEMO-MH01' },
-      update: { name: 'Lập trình cơ bản', majorId: major.id, credits: 3, semester: 1 },
-      create: { code: 'DEMO-MH01', name: 'Lập trình cơ bản', credits: 3, semester: 1, majorId: major.id },
-    }),
-    prisma.course.upsert({
-      where: { code: 'MH001' },
-      update: { name: 'Cơ sở dữ liệu', majorId: major.id, credits: 3, semester: 2 },
-      create: { code: 'MH001', name: 'Cơ sở dữ liệu', credits: 3, semester: 2, majorId: major.id },
-    }),
-    prisma.course.upsert({
-      where: { code: 'DEMO-MH03' },
-      update: { name: 'Phân tích hệ thống', majorId: major.id, credits: 3, semester: 2 },
-      create: { code: 'DEMO-MH03', name: 'Phân tích hệ thống', credits: 3, semester: 2, majorId: major.id },
-    }),
-  ]);
+  // Liên kết năm học cho ngành CNTT
+  await prisma.majorYear.upsert({
+    where: { majorId_academicYearId: { majorId: cntt.id, academicYearId: academicYear.id } },
+    update: {},
+    create: { majorId: cntt.id, academicYearId: academicYear.id },
+  });
 
+  // 3. Đảm bảo 10 Chuẩn đầu ra (PLO) của ngành CNTT
   const plos = await Promise.all([
-    findOrCreatePlo(major.id, 'PLO1', 'Có kiến thức nền tảng về công nghệ thông tin.'),
-    findOrCreatePlo(major.id, 'PLO2', 'Có khả năng phân tích và giải quyết vấn đề.'),
-    findOrCreatePlo(major.id, 'PLO3', 'Có khả năng sử dụng công cụ và phát triển hệ thống.'),
-  ]);
-  const clos = await Promise.all([
-    findOrCreateClo(major.id, 'CLO1', 'Trình bày được kiến thức nền tảng của học phần.'),
-    findOrCreateClo(major.id, 'CLO2', 'Vận dụng kiến thức để giải quyết bài toán.'),
-    findOrCreateClo(major.id, 'CLO3', 'Xây dựng được sản phẩm hoặc mô hình minh họa.'),
+    findOrCreatePlo(cntt.id, 'PLO1', 'Kiến thức Đại cương & Nền tảng Khoa học: Vận dụng thành thạo kiến thức về lý luận chính trị, toán học và phương pháp nghiên cứu khoa học vào mô hình hóa các bài toán tin học.'),
+    findOrCreatePlo(cntt.id, 'PLO2', 'Cơ sở Công nghệ thông tin & Máy tính: Nắm vững nguyên lý hoạt động của máy tính, kiến trúc phần cứng, hệ điều hành, mạng máy tính, cơ sở dữ liệu và an toàn thông tin.'),
+    findOrCreatePlo(cntt.id, 'PLO3', 'Phân tích, Thiết kế & Phát triển Phần mềm: Áp dụng các quy trình phát triển phần mềm chuẩn, phân tích yêu cầu, thiết kế kiến trúc và kiểm thử chất lượng phần mềm.'),
+    findOrCreatePlo(cntt.id, 'PLO4', 'Chuyên sâu Công nghệ tiên tiến: Triển khai các giải pháp Trí tuệ nhân tạo (AI), Điện toán đám mây (Cloud) và Dữ liệu lớn (Big Data).'),
+    findOrCreatePlo(cntt.id, 'PLO5', 'Kỹ năng Lập trình & Kỹ thuật Phần mềm: Thành thạo các ngôn ngữ lập trình hiện đại, quy chuẩn viết mã sạch (Clean Code), kiểm thử tự động và quản lý mã nguồn Git.'),
+    findOrCreatePlo(cntt.id, 'PLO6', 'Kỹ năng Tư duy Phân tích & Giải quyết vấn đề: Khả năng tư duy phản biện, phân tích logic và giải quyết các bài toán kỹ thuật phức tạp.'),
+    findOrCreatePlo(cntt.id, 'PLO7', 'Kỹ năng Ngoại ngữ & Giao tiếp Chuyên môn: Sử dụng Tiếng Anh chuyên ngành thành thạo, viết tài liệu kỹ thuật và thuyết trình giải pháp công nghệ hiệu quả.'),
+    findOrCreatePlo(cntt.id, 'PLO8', 'Kỹ năng Làm việc nhóm & Quản lý Dự án: Hợp tác hiệu quả trong nhóm đa ngành, ứng dụng các phương pháp quản trị dự án Agile/Scrum.'),
+    findOrCreatePlo(cntt.id, 'PLO9', 'Tác phong Nghề nghiệp & Đạo đức CNTT: Tuân thủ pháp luật, đạo đức nghề nghiệp, bảo vệ quyền riêng tư và sở hữu trí tuệ trong kỷ nguyên số.'),
+    findOrCreatePlo(cntt.id, 'PLO10', 'Tự học & Thích ứng Chuyển đổi số: Khả năng tự nghiên cứu, cập nhật công nghệ mới và học tập suốt đời trong môi trường công nghệ biến đổi nhanh.'),
   ]);
 
-  const cohort = await prisma.cohort.upsert({ where: { year: 2025 }, update: {}, create: { year: 2025 } });
-  for (const course of courses) {
-    await prisma.courseYear.upsert({
-      where: { courseId_academicYearId: { courseId: course.id, academicYearId: academicYear.id } },
-      update: {},
-      create: { courseId: course.id, academicYearId: academicYear.id },
-    });
-    await prisma.courseCohort.upsert({
-      where: { courseId_cohortId: { courseId: course.id, cohortId: cohort.id } },
-      update: {},
-      create: { courseId: course.id, cohortId: cohort.id },
-    });
+  // 4. Cập nhật chỉ số đánh giá tổng hợp cho ngành CNTT
+  const assessment = await prisma.assessment.findFirst({ where: { majorId: cntt.id } });
+  if (assessment) {
+    await prisma.assessment.update({ where: { id: assessment.id }, data: { ploRate: 80.0, cloRate: 3.5 } });
+  } else {
+    await prisma.assessment.create({ data: { majorId: cntt.id, ploRate: 80.0, cloRate: 3.5 } });
   }
 
-  const mapping = [
-    [courses[0], clos[0], plos[0], 1], [courses[0], clos[1], plos[1], 2],
-    [courses[1], clos[0], plos[0], 2], [courses[1], clos[1], plos[1], 3], [courses[1], clos[2], plos[2], 2],
-    [courses[2], clos[1], plos[1], 2], [courses[2], clos[2], plos[2], 3],
-  ] as const;
-  for (const [course, clo, plo, level] of mapping) {
-    await prisma.courseCLO.upsert({
-      where: { courseId_cloId: { courseId: course.id, cloId: clo.id } },
-      update: {},
-      create: { courseId: course.id, cloId: clo.id },
+  // 5. Nạp dữ liệu điểm StudentCloScore thực tế cho sinh viên ngành CNTT
+  if (cntt.students.length > 0) {
+    const matrixLinks = await prisma.matrix.findMany({
+      where: { plo: { majorId: cntt.id }, courseId: { not: null } },
+      select: { courseId: true, cloId: true, ploId: true },
+      distinct: ['courseId', 'cloId'],
     });
-    const matrix = await prisma.matrix.findFirst({ where: { courseId: course.id, cloId: clo.id, ploId: plo.id } });
-    if (matrix) await prisma.matrix.update({ where: { id: matrix.id }, data: { level, method: 'TT' } });
-    else await prisma.matrix.create({ data: { courseId: course.id, cloId: clo.id, ploId: plo.id, level, method: 'TT' } });
-  }
 
-  const students = await Promise.all([
-    prisma.student.upsert({ where: { studentCode: 'DEMO2025001' }, update: { fullName: 'Nguyễn Minh An', majorId: major.id, cohortYear: 2025 }, create: { studentCode: 'DEMO2025001', fullName: 'Nguyễn Minh An', majorId: major.id, cohortYear: 2025 } }),
-    prisma.student.upsert({ where: { studentCode: 'DEMO2025002' }, update: { fullName: 'Trần Hoàng Bình', majorId: major.id, cohortYear: 2025 }, create: { studentCode: 'DEMO2025002', fullName: 'Trần Hoàng Bình', majorId: major.id, cohortYear: 2025 } }),
-    prisma.student.upsert({ where: { studentCode: 'DEMO2025003' }, update: { fullName: 'Lê Phương Chi', majorId: major.id, cohortYear: 2025 }, create: { studentCode: 'DEMO2025003', fullName: 'Lê Phương Chi', majorId: major.id, cohortYear: 2025 } }),
-  ]);
-  const scoreValues = [8.5, 7.0, 9.0];
-  for (const [studentIndex, student] of students.entries()) {
-    for (const [courseIndex, course] of courses.entries()) {
-      const applicableClos = clos.filter((clo) => mapping.some(([mappedCourse, mappedClo]) => mappedCourse.id === course.id && mappedClo.id === clo.id));
-      for (const [cloIndex, clo] of applicableClos.entries()) {
-        await prisma.studentCloScore.upsert({
-          where: { studentId_courseId_cloId: { studentId: student.id, courseId: course.id, cloId: clo.id } },
-          update: { score: Math.min(10, Math.max(0, scoreValues[(studentIndex + courseIndex + cloIndex) % scoreValues.length])) },
-          create: { studentId: student.id, courseId: course.id, cloId: clo.id, score: Math.min(10, Math.max(0, scoreValues[(studentIndex + courseIndex + cloIndex) % scoreValues.length])) },
+    const ploOffsetMap = new Map<number, number>();
+    cntt.plos.forEach((plo, idx) => {
+      const offsets = [0.3, 0.0, 0.7, -0.3, 0.5, 0.0, -0.8, 0.3, 1.0, 0.0];
+      ploOffsetMap.set(plo.id, offsets[idx % offsets.length]);
+    });
+
+    const cnttScoreRecords: Array<{ studentId: number; courseId: number; cloId: number; score: number }> = [];
+    for (const [studentIdx, student] of cntt.students.entries()) {
+      const studentBias = studentIdx < 8 ? 0.8 : studentIdx > 22 ? -0.8 : 0.0;
+      for (const [linkIdx, link] of matrixLinks.entries()) {
+        if (!link.courseId) continue;
+        const ploOffset = ploOffsetMap.get(link.ploId) || 0;
+        const cyclicBase = [8.2, 7.5, 8.8, 7.8, 6.8, 8.5, 9.2, 7.0, 8.0][(studentIdx + linkIdx) % 9];
+        const finalScore = Math.min(10, Math.max(4.5, Number((cyclicBase + studentBias + ploOffset).toFixed(1))));
+
+        cnttScoreRecords.push({
+          studentId: student.id,
+          courseId: link.courseId,
+          cloId: link.cloId,
+          score: finalScore,
         });
       }
     }
+
+    await prisma.studentCloScore.deleteMany({ where: { student: { majorId: cntt.id } } });
+    const batchSize = 1000;
+    for (let i = 0; i < cnttScoreRecords.length; i += batchSize) {
+      const chunk = cnttScoreRecords.slice(i, i + batchSize);
+      await prisma.studentCloScore.createMany({ data: chunk, skipDuplicates: true });
+    }
+    console.log(`Đã nạp ${cnttScoreRecords.length} điểm StudentCloScore cho sinh viên ngành CNTT.`);
   }
 
-  const assessment = await prisma.assessment.findFirst({ where: { majorId: major.id } });
-  if (assessment) await prisma.assessment.update({ where: { id: assessment.id }, data: { ploRate: 86.7, cloRate: 8.2 } });
-  else await prisma.assessment.create({ data: { majorId: major.id, ploRate: 86.7, cloRate: 8.2 } });
+  // 6. Cấu hình phân tích chuẩn đầu ra & khảo sát
+  await prisma.analysisSetting.upsert({
+    where: { id: 1 },
+    update: { ploThreshold: 75, cloThreshold: 3, enableContribution: true, enableSelfAssessment: true },
+    create: { id: 1, ploThreshold: 75, cloThreshold: 3, enableContribution: true, enableSelfAssessment: true },
+  });
 
+  await prisma.surveyDashboardSetting.upsert({
+    where: { id: 1 },
+    update: { cdrConversion: true },
+    create: { id: 1, cdrConversion: true },
+  });
+
+  // 7. Tạo phiếu khảo sát cho sinh viên ngành CNTT
   const survey = await prisma.surveyForm.upsert({
-    where: { code: 'DEMO-KS-SV' },
+    where: { code: 'KS-SV-CNTT' },
     update: {
-      title: 'Khảo sát trải nghiệm học tập - dữ liệu mẫu',
+      title: 'Khảo sát trải nghiệm học tập và chuẩn đầu ra ngành CNTT',
       enabled: true,
       year: '2025-2026',
+      classes: 'CNTT',
     },
     create: {
       year: '2025-2026',
-      code: 'DEMO-KS-SV',
-      title: 'Khảo sát trải nghiệm học tập - dữ liệu mẫu',
-      description: 'Phiếu khảo sát minh họa cho hệ thống SMART-EDU.',
-      isCdr: false,
-      link: '/surveys/forms/demo',
+      code: 'KS-SV-CNTT',
+      title: 'Khảo sát trải nghiệm học tập và chuẩn đầu ra ngành CNTT',
+      description: 'Phiếu khảo sát đo lường mức độ đạt chuẩn đầu ra và trải nghiệm học tập của sinh viên ngành Công nghệ thông tin.',
+      isCdr: true,
+      link: '/surveys/forms/cntt',
       level: 'LV1',
       enabled: true,
       legacyLink: '',
       menu: 'main',
-      classes: 'DEMO-CNTT',
+      classes: 'CNTT',
     },
   });
+
   await prisma.surveyQuestion.deleteMany({ where: { surveyFormId: survey.id } });
-  const surveyQuestions = await prisma.surveyQuestion.createMany({
+  await prisma.surveyQuestion.createMany({
     data: [
-      { surveyFormId: survey.id, questionText: 'Mức độ hài lòng với nội dung học phần?', type: 'single', options: JSON.stringify(['1', '2', '3', '4', '5']), groupNo: 1, groupTitle: 'Nội dung học tập', sortOrder: 1 },
-      { surveyFormId: survey.id, questionText: 'Mức độ hỗ trợ của giảng viên?', type: 'single', options: JSON.stringify(['1', '2', '3', '4', '5']), groupNo: 1, groupTitle: 'Nội dung học tập', sortOrder: 2 },
-      { surveyFormId: survey.id, questionText: 'Góp ý cải thiện học phần', type: 'text', options: JSON.stringify([]), required: false, groupNo: 2, groupTitle: 'Góp ý', sortOrder: 3 },
-    ],
-  });
-  const questionRows = await prisma.surveyQuestion.findMany({ where: { surveyFormId: survey.id }, orderBy: { sortOrder: 'asc' }, select: { id: true } });
-  await prisma.surveyResponse.deleteMany({ where: { surveyFormId: survey.id } });
-  await prisma.surveyResponse.createMany({
-    data: [
-      { surveyFormId: survey.id, answers: JSON.stringify({ [questionRows[0].id]: '4', [questionRows[1].id]: '5', [questionRows[2].id]: 'Nội dung rõ ràng.' }) },
-      { surveyFormId: survey.id, answers: JSON.stringify({ [questionRows[0].id]: '5', [questionRows[1].id]: '4', [questionRows[2].id]: 'Cần thêm bài tập thực hành.' }) },
-      { surveyFormId: survey.id, answers: JSON.stringify({ [questionRows[0].id]: '4', [questionRows[1].id]: '4', [questionRows[2].id]: 'Tốt.' }) },
+      { surveyFormId: survey.id, questionText: 'Mức độ đáp ứng chuẩn đầu ra của các học phần chuyên ngành?', type: 'single', options: JSON.stringify(['1', '2', '3', '4', '5']), groupNo: 1, groupTitle: 'Chất lượng đào tạo', sortOrder: 1 },
+      { surveyFormId: survey.id, questionText: 'Mức độ hài lòng với phương pháp giảng dạy và thực hành?', type: 'single', options: JSON.stringify(['1', '2', '3', '4', '5']), groupNo: 1, groupTitle: 'Chất lượng đào tạo', sortOrder: 2 },
+      { surveyFormId: survey.id, questionText: 'Ý kiến đóng góp để nâng cao chất lượng chương trình đào tạo', type: 'text', options: JSON.stringify([]), required: false, groupNo: 2, groupTitle: 'Góp ý', sortOrder: 3 },
     ],
   });
 
-  const dashboardSurvey = await prisma.dashboardSurveyForm.upsert({
-    where: { code: 'DEMO-KS-CN' },
-    update: { title: 'Khảo sát nhu cầu cải tiến chương trình - dữ liệu mẫu', enabled: true },
-    create: {
-      code: 'DEMO-KS-CN',
-      title: 'Khảo sát nhu cầu cải tiến chương trình - dữ liệu mẫu',
-      description: 'Phiếu mẫu dùng cho dashboard khảo sát.',
-      isCdr: true,
-      enabled: true,
-    },
+  console.log('Hoàn thành cập nhật cơ sở dữ liệu cho ngành CNTT:', {
+    major: cntt.code,
+    plos: plos.length,
+    students: cntt.students.length,
   });
-  await prisma.dashboardSurveyQuestion.deleteMany({ where: { dashboardFormId: dashboardSurvey.id } });
-  await prisma.dashboardSurveyQuestion.createMany({
-    data: [
-      { dashboardFormId: dashboardSurvey.id, questionText: 'Mức độ phù hợp của chương trình đào tạo?', type: 'single', options: JSON.stringify(['1', '2', '3', '4', '5']), groupNo: 1, groupTitle: 'Chương trình', sortOrder: 1 },
-      { dashboardFormId: dashboardSurvey.id, questionText: 'Nhà trường nên ưu tiên cải tiến nội dung nào?', type: 'text', options: JSON.stringify([]), required: false, groupNo: 2, groupTitle: 'Đề xuất', sortOrder: 2 },
-    ],
-  });
-  await prisma.dashboardSurveyResponse.deleteMany({ where: { dashboardFormId: dashboardSurvey.id } });
-  const dashboardQuestions = await prisma.dashboardSurveyQuestion.findMany({ where: { dashboardFormId: dashboardSurvey.id }, orderBy: { sortOrder: 'asc' }, select: { id: true } });
-  await prisma.dashboardSurveyResponse.createMany({
-    data: [
-      { dashboardFormId: dashboardSurvey.id, answers: JSON.stringify({ [dashboardQuestions[0].id]: '4', [dashboardQuestions[1].id]: 'Tăng hoạt động thực hành.' }) },
-      { dashboardFormId: dashboardSurvey.id, answers: JSON.stringify({ [dashboardQuestions[0].id]: '5', [dashboardQuestions[1].id]: 'Bổ sung học phần dự án.' }) },
-    ],
-  });
-  await prisma.surveyDashboardSetting.upsert({ where: { id: 1 }, update: { cdrConversion: true }, create: { id: 1, cdrConversion: true } });
-
-  console.log('Đã nạp dữ liệu mẫu DEMO vào MySQL:', { major: major.code, courses: courses.length, plos: plos.length, clos: clos.length, students: students.length });
 }
 
-main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => { await prisma.$disconnect(); });
+main()
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
