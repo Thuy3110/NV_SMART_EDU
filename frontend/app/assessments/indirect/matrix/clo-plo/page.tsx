@@ -1,6 +1,13 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import {
+  Children,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -11,6 +18,7 @@ import {
   LoaderCircle,
   Plus,
   Save,
+  Search,
   Trash2,
   X,
 } from "lucide-react";
@@ -25,6 +33,7 @@ interface MatrixCourse {
   id: number;
   code: string;
   name: string;
+  semester: number | null;
 }
 
 interface MatrixClo {
@@ -85,6 +94,12 @@ function CloPloMatrixEditor() {
   const [savingClo, setSavingClo] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [semesterFilter, setSemesterFilter] = useState("all");
+  const [ploFilter, setPloFilter] = useState("all");
+  const [methodFilter, setMethodFilter] = useState("all");
+  const [sortKey, setSortKey] = useState<"semester" | "plo" | "method" | "course">("semester");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   const loadMatrix = useCallback(async (signal: AbortSignal) => {
     if (!Number.isInteger(majorId) || majorId <= 0) {
@@ -220,9 +235,65 @@ function CloPloMatrixEditor() {
     return matrixData?.courses.find((course) => course.id === courseId)?.code ?? "";
   }
 
+  function courseTitle(courseId: number | null) {
+    const course = matrixData?.courses.find((item) => item.id === courseId);
+    return course ? `${course.code} - ${course.name}` : "Chưa chọn học phần";
+  }
+
+  function courseSemester(courseId: number | null) {
+    return matrixData?.courses.find((item) => item.id === courseId)?.semester ?? null;
+  }
+
   function cloData(cloId: number) {
     return matrixData?.clos.find((clo) => clo.id === cloId);
   }
+
+  const visibleRows = useMemo(() => {
+    if (!matrixData) return [];
+
+    const search = searchText.trim().toLowerCase();
+    const filtered = rows
+      .map((row, originalIndex) => ({ row, originalIndex }))
+      .filter(({ row }) => {
+        const course = matrixData.courses.find((item) => item.id === row.courseId);
+        const clo = matrixData.clos.find((item) => item.id === row.cloId);
+        const plo = matrixData.plos.find((item) => item.id === row.ploId);
+        const matchesSearch =
+          !search ||
+          `${course?.code ?? ""} ${course?.name ?? ""} ${clo?.code ?? ""} ${plo?.code ?? ""}`
+            .toLowerCase()
+            .includes(search);
+        const matchesSemester =
+          semesterFilter === "all" ||
+          (semesterFilter === "none"
+            ? course?.semester == null
+            : String(course?.semester ?? "") === semesterFilter);
+        const matchesPlo = ploFilter === "all" || String(row.ploId) === ploFilter;
+        const matchesMethod =
+          methodFilter === "all" || row.method === methodFilter;
+        return matchesSearch && matchesSemester && matchesPlo && matchesMethod;
+      });
+
+    return filtered.sort((a, b) => {
+      const courseA = matrixData.courses.find((item) => item.id === a.row.courseId);
+      const courseB = matrixData.courses.find((item) => item.id === b.row.courseId);
+      const ploA = matrixData.plos.find((item) => item.id === a.row.ploId)?.code ?? "";
+      const ploB = matrixData.plos.find((item) => item.id === b.row.ploId)?.code ?? "";
+      let comparison = 0;
+      if (sortKey === "semester") {
+        comparison =
+          (courseA?.semester ?? 999) - (courseB?.semester ?? 999) ||
+          (courseA?.code ?? "").localeCompare(courseB?.code ?? "", "vi");
+      } else if (sortKey === "plo") {
+        comparison = ploA.localeCompare(ploB, "vi", { numeric: true });
+      } else if (sortKey === "method") {
+        comparison = a.row.method.localeCompare(b.row.method);
+      } else {
+        comparison = (courseA?.code ?? "").localeCompare(courseB?.code ?? "", "vi");
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [matrixData, rows, searchText, semesterFilter, ploFilter, methodFilter, sortKey, sortDirection]);
 
   function startCloEdit(clo: MatrixClo) {
     setEditingCloId(clo.id);
@@ -419,13 +490,96 @@ function CloPloMatrixEditor() {
             </section>
           )}
 
+          <div className="mx-5 mt-4 grid gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:mx-7 sm:grid-cols-2 lg:grid-cols-5">
+            <label className="relative lg:col-span-1">
+              <Search
+                size={14}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Tìm mã/tên môn, CLO, PLO..."
+                aria-label="Tìm kiếm trong ma trận"
+                className="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-3 text-xs text-slate-700 outline-none focus:border-[#07508d]"
+              />
+            </label>
+            <SelectField
+              ariaLabel="Lọc theo học kỳ"
+              value={semesterFilter}
+              onChange={setSemesterFilter}
+            >
+              <option key="all-semesters" value="all">Tất cả học kỳ</option>
+              <option key="no-semester" value="none">Chưa xếp HK</option>
+              {matrixData &&
+                [...new Set(
+                  matrixData.courses
+                    .map((course) => course.semester)
+                    .filter((semester): semester is number => semester !== null),
+                )]
+                  .sort((a, b) => a - b)
+                  .map((semester) => (
+                    <option key={semester} value={String(semester)}>
+                      Học kỳ {semester}
+                    </option>
+                  ))}
+            </SelectField>
+            <SelectField
+              ariaLabel="Lọc theo PLO"
+              value={ploFilter}
+              onChange={setPloFilter}
+            >
+              <option key="all-plos" value="all">Tất cả PLO</option>
+              {matrixData?.plos.map((plo) => (
+                <option key={plo.id} value={String(plo.id)}>
+                  {plo.code}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField
+              ariaLabel="Lọc theo phương thức đánh giá"
+              value={methodFilter}
+              onChange={setMethodFilter}
+            >
+              <option key="all-methods" value="all">Tất cả phương thức</option>
+              <option key="method-TT" value="TT">TT - Trực tiếp</option>
+              <option key="method-GT" value="GT">GT - Gián tiếp</option>
+            </SelectField>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <SelectField
+                ariaLabel="Sắp xếp theo"
+                value={sortKey}
+                onChange={(value) =>
+                  setSortKey(value as "semester" | "plo" | "method" | "course")
+                }
+              >
+                <option key="sort-semester" value="semester">Sắp xếp: Học kỳ</option>
+                <option key="sort-course" value="course">Sắp xếp: Mã môn</option>
+                <option key="sort-plo" value="plo">Sắp xếp: PLO</option>
+                <option key="sort-method" value="method">Sắp xếp: Phương thức</option>
+              </SelectField>
+              <button
+                type="button"
+                onClick={() =>
+                  setSortDirection((current) => (current === "asc" ? "desc" : "asc"))
+                }
+                aria-label={sortDirection === "asc" ? "Sắp xếp tăng dần" : "Sắp xếp giảm dần"}
+                title={sortDirection === "asc" ? "Tăng dần" : "Giảm dần"}
+                className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >
+                {sortDirection === "asc" ? "↑" : "↓"}
+              </button>
+            </div>
+          </div>
+
           <div className="flex-1 overflow-x-auto px-2 sm:px-4">
             <table className="w-full min-w-[800px] table-fixed border-collapse text-left">
               <thead>
                 <tr className="bg-[#e6f0f9] text-[10px] font-bold uppercase tracking-wide text-slate-600">
+                  <th className="w-[8%] px-3 py-4 text-center">Học kỳ</th>
                   <th className="w-[14%] px-4 py-4">Mã MH</th>
                   <th className="w-[10%] px-4 py-4">CLO</th>
-                  <th className="w-[31%] px-4 py-4">CLO_DESC</th>
+                  <th className="w-[27%] px-4 py-4">CLO_DESC</th>
                   <th className="w-[12%] px-4 py-4">PLO</th>
                   <th className="w-[11%] px-4 py-4 text-center">Mức đóng góp</th>
                   <th className="w-[14%] px-4 py-4 text-center">Phương thức ĐG</th>
@@ -435,7 +589,7 @@ function CloPloMatrixEditor() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-sm text-slate-500">
+                    <td colSpan={8} className="py-16 text-center text-sm text-slate-500">
                       <LoaderCircle
                         size={20}
                         className="mx-auto mb-2 animate-spin"
@@ -443,26 +597,34 @@ function CloPloMatrixEditor() {
                       Đang tải dữ liệu ma trận...
                     </td>
                   </tr>
-                ) : rows.length > 0 ? (
-                  rows.map((row, index) => (
+                ) : visibleRows.length > 0 ? (
+                  visibleRows.map(({ row, originalIndex }) => (
                     <tr
-                      key={`${row.cloId}-${row.ploId}-${index}`}
+                      key={`${row.cloId}-${row.ploId}-${originalIndex}`}
                       className="border-b border-slate-100 text-xs text-slate-700"
                     >
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-3 text-center">
+                        <span className="inline-block rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                          {courseSemester(row.courseId) ? `HK ${courseSemester(row.courseId)}` : "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3" title={courseTitle(row.courseId)}>
                         {viewOnly ? (
-                          courseName(row.courseId) || "—"
+                          <span title={courseTitle(row.courseId)}>
+                            {courseName(row.courseId) || "—"}
+                          </span>
                         ) : (
                           <SelectField
                             ariaLabel="Mã học phần"
                             value={row.courseId ?? ""}
+                            title={courseTitle(row.courseId)}
                             onChange={(value) =>
-                              updateRow(index, {
+                              updateRow(originalIndex, {
                                 courseId: value ? Number(value) : null,
                               })
                             }
                           >
-                            <option value="">—</option>
+                            <option key="no-course" value="">—</option>
                             {matrixData?.courses.map((course) => (
                               <option key={course.id} value={course.id}>
                                 {course.code}
@@ -479,7 +641,7 @@ function CloPloMatrixEditor() {
                             ariaLabel="CLO"
                             value={row.cloId}
                             onChange={(value) =>
-                              updateRow(index, { cloId: Number(value) })
+                              updateRow(originalIndex, { cloId: Number(value) })
                             }
                           >
                             {matrixData?.clos.map((clo) => (
@@ -502,7 +664,7 @@ function CloPloMatrixEditor() {
                             ariaLabel="PLO"
                             value={row.ploId}
                             onChange={(value) =>
-                              updateRow(index, { ploId: Number(value) })
+                              updateRow(originalIndex, { ploId: Number(value) })
                             }
                           >
                             {matrixData?.plos.map((plo) => (
@@ -521,12 +683,12 @@ function CloPloMatrixEditor() {
                             ariaLabel="Mức đóng góp"
                             value={row.level}
                             onChange={(value) =>
-                              updateRow(index, { level: Number(value) })
+                              updateRow(originalIndex, { level: Number(value) })
                             }
                           >
-                            <option value={1}>I</option>
-                            <option value={2}>R</option>
-                            <option value={3}>M</option>
+                            <option key="level-I" value={1}>I</option>
+                            <option key="level-R" value={2}>R</option>
+                            <option key="level-M" value={3}>M</option>
                           </SelectField>
                         )}
                       </td>
@@ -538,13 +700,13 @@ function CloPloMatrixEditor() {
                             ariaLabel="Phương thức đánh giá"
                             value={row.method}
                             onChange={(value) =>
-                              updateRow(index, {
+                              updateRow(originalIndex, {
                                 method: value as MatrixMethod,
                               })
                             }
                           >
-                            <option value="TT">TT</option>
-                            <option value="GT">GT</option>
+                            <option key="method-TT" value="TT">TT</option>
+                            <option key="method-GT" value="GT">GT</option>
                           </SelectField>
                         )}
                       </td>
@@ -552,8 +714,8 @@ function CloPloMatrixEditor() {
                         {!viewOnly && (
                           <button
                             type="button"
-                            onClick={() => removeRow(index)}
-                            aria-label={`Xóa dòng ma trận ${index + 1}`}
+                            onClick={() => removeRow(originalIndex)}
+                            aria-label={`Xóa dòng ma trận ${originalIndex + 1}`}
                             className="rounded-md p-2 text-orange-700 hover:bg-orange-50"
                           >
                             <Trash2 size={15} />
@@ -565,7 +727,7 @@ function CloPloMatrixEditor() {
                 ) : (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="py-16 text-center text-sm text-slate-500"
                     >
                       Chưa có dòng ma trận CLO–PLO. Bấm “Thêm hàng” để nhập dữ liệu.
@@ -623,21 +785,23 @@ function SelectField({
   value,
   onChange,
   children,
+  title,
 }: {
   ariaLabel: string;
   value: string | number;
   onChange: (value: string) => void;
   children: React.ReactNode;
+  title?: string;
 }) {
   return (
-    <span className="relative block">
+    <span className="relative block" title={title}>
       <select
         aria-label={ariaLabel}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 pr-7 text-xs text-slate-700 outline-none focus:border-[#07508d]"
       >
-        {children}
+        {Children.toArray(children)}
       </select>
       <ChevronDown
         size={13}

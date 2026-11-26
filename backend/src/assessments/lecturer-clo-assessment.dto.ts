@@ -2,9 +2,12 @@ import { Type } from 'class-transformer';
 import {
   ArrayUnique,
   IsArray,
+  IsNotEmpty,
   IsInt,
   IsNumber,
   IsOptional,
+  IsString,
+  Max,
   Min,
   ValidateIf,
   ValidateNested,
@@ -38,6 +41,21 @@ export class CourseCloRateDto {
   attainmentRate!: number | null;
 }
 
+export class StudentCloScoreInputDto {
+  @IsString()
+  @IsNotEmpty()
+  studentCode!: string;
+
+  @IsInt()
+  @Min(1)
+  cloId!: number;
+
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(0)
+  @Max(10)
+  score!: number;
+}
+
 export class SaveLecturerCloAssessmentsDto {
   @IsInt()
   @Min(1)
@@ -69,10 +87,18 @@ export class SaveCourseCloAssessmentsDto {
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CourseCloRateDto)
-  @ArrayUnique(
-    (item: CourseCloRateDto) => `${item?.cloId ?? ''}`,
-  )
+  @ArrayUnique((item: CourseCloRateDto) => `${item?.cloId ?? ''}`)
   assessments!: CourseCloRateDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StudentCloScoreInputDto)
+  @ArrayUnique(
+    (item: StudentCloScoreInputDto) =>
+      `${typeof item?.studentCode === 'string' ? item.studentCode.trim().toUpperCase() : ''}:${item?.cloId ?? ''}`,
+  )
+  studentScores?: StudentCloScoreInputDto[];
 }
 
 export class AssignLecturerCoursesDto {
