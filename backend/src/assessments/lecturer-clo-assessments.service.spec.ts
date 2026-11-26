@@ -3,6 +3,65 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LecturerCloAssessmentsService } from './lecturer-clo-assessments.service';
 
 describe('LecturerCloAssessmentsService', () => {
+  it('includes students from each course cohort in the lecturer course list', async () => {
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 20,
+          fullName: 'Giảng viên A',
+          role: 'LECTURER',
+        }),
+      },
+      courseLecturer: { findMany: jest.fn().mockResolvedValue([]) },
+      lecturerCloAssessment: { findMany: jest.fn().mockResolvedValue([]) },
+      course: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 8,
+            code: 'MH01',
+            name: 'Cơ sở dữ liệu',
+            credits: 3,
+            semester: 1,
+            majorId: 4,
+            major: { id: 4, code: 'CNTT', name: 'Công nghệ thông tin' },
+            cloMappings: [],
+          },
+        ]),
+      },
+      courseCohort: {
+        findMany: jest.fn().mockResolvedValue([
+          { courseId: 8, cohort: { year: 2022 } },
+        ]),
+      },
+      student: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 31,
+            studentCode: 'SV001',
+            fullName: 'Sinh viên A',
+            majorId: 4,
+            cohortYear: 2022,
+          },
+        ]),
+      },
+      matrix: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new LecturerCloAssessmentsService(
+      prisma as unknown as PrismaService,
+    );
+
+    const result = await service.getMyCourses(20, 2026);
+
+    expect(result.courses[0].students).toEqual([
+      {
+        id: 31,
+        studentCode: 'SV001',
+        fullName: 'Sinh viên A',
+        cohortYear: 2022,
+      },
+    ]);
+  });
+
   it('averages lecturer rates while retaining the current lecturer rate', async () => {
     const prisma = {
       major: {
@@ -147,6 +206,101 @@ describe('LecturerCloAssessmentsService', () => {
       update: { attainmentRate: 84.5 },
     });
     expect(result.savedCount).toBe(1);
+  });
+
+  it('saves detailed student scores with the lecturer CLO assessment', async () => {
+    const transaction = {
+      academicYear: {
+        upsert: jest.fn().mockResolvedValue({ id: 6 }),
+      },
+      lecturerCloAssessment: {
+        upsert: jest.fn().mockResolvedValue({}),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      studentCloScore: {
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const prisma = {
+      course: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 8,
+          code: 'MH01',
+          majorId: 4,
+          cloMappings: [{ cloId: 12 }],
+        }),
+      },
+      matrix: { findMany: jest.fn().mockResolvedValue([]) },
+      student: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 31, studentCode: 'SV001', majorId: 4 }]),
+      },
+      $transaction: jest.fn(
+        (callback: (tx: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
+    };
+    const service = new LecturerCloAssessmentsService(
+      prisma as unknown as PrismaService,
+    );
+
+    const result = await service.saveCourseAssessments(20, {
+      courseId: 8,
+      academicYear: 2026,
+      assessments: [{ cloId: 12, attainmentRate: 100 }],
+      studentScores: [{ studentCode: 'sv001', cloId: 12, score: 8.5 }],
+    });
+
+    expect(transaction.studentCloScore.upsert).toHaveBeenCalledWith({
+      where: {
+        studentId_courseId_cloId: {
+          studentId: 31,
+          courseId: 8,
+          cloId: 12,
+        },
+      },
+      create: {
+        studentId: 31,
+        courseId: 8,
+        cloId: 12,
+        score: 8.5,
+      },
+      update: { score: 8.5 },
+    });
+    expect(result).toMatchObject({
+      updatedStudentScoreCount: 1,
+      updatedStudentCount: 1,
+    });
+  });
+
+  it('rejects detailed scores for students not registered in the course major', async () => {
+    const prisma = {
+      course: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 8,
+          code: 'MH01',
+          majorId: 4,
+          cloMappings: [{ cloId: 12 }],
+        }),
+      },
+      matrix: { findMany: jest.fn().mockResolvedValue([]) },
+      student: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: jest.fn(),
+    };
+    const service = new LecturerCloAssessmentsService(
+      prisma as unknown as PrismaService,
+    );
+
+    await expect(
+      service.saveCourseAssessments(20, {
+        courseId: 8,
+        academicYear: 2026,
+        assessments: [{ cloId: 12, attainmentRate: 100 }],
+        studentScores: [{ studentCode: 'SV999', cloId: 12, score: 8.5 }],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('calculates major and program results from averaged CLO rates and matrix weights', async () => {
@@ -513,9 +667,7 @@ describe('LecturerCloAssessmentsService', () => {
     const result = await service.getProgramReport(2026);
 
     expect(result.programs[0].majors[0].plos[0].status).toBe('Đạt');
-    expect(result.programs[0].majors[0].plos[1].status).toBe(
-      'Chưa có dữ liệu',
-    );
+    expect(result.programs[0].majors[0].plos[1].status).toBe('Chưa có dữ liệu');
     expect(result.programs[0].majors[0].evaluation).toEqual({
       averagePloRate: null,
       threshold: 70,

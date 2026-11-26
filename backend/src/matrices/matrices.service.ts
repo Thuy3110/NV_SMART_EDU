@@ -22,8 +22,8 @@ export class MatricesService {
     const [courses, clos, plos, matrix] = await Promise.all([
       this.prisma.course.findMany({
         where: { majorId },
-        select: { id: true, code: true, name: true },
-        orderBy: { code: 'asc' },
+        select: { id: true, code: true, name: true, semester: true },
+        orderBy: [{ semester: 'asc' }, { code: 'asc' }],
       }),
       this.prisma.cLO.findMany({
         where: { majorId },

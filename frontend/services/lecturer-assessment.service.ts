@@ -114,6 +114,12 @@ export type MyAssignedCourse = {
   credits: number;
   semester: number | null;
   major: { id: number; code: string; name: string };
+  students: Array<{
+    id: number;
+    studentCode: string;
+    fullName: string;
+    cohortYear: number;
+  }>;
   isAssigned: boolean;
   evaluatedCloCount: number;
   totalCloCount: number;
@@ -146,6 +152,11 @@ export type SaveCourseAssessmentPayload = {
     courseId?: number;
     cloId: number;
     attainmentRate: number | null;
+  }>;
+  studentScores?: Array<{
+    studentCode: string;
+    cloId: number;
+    score: number;
   }>;
 };
 
@@ -200,6 +211,8 @@ export async function saveCourseAssessments(
     courseId: number;
     academicYear: number;
     savedCount: number;
+    updatedStudentScoreCount: number;
+    updatedStudentCount: number;
   }>("/assessments/lecturer-clo/course", payload);
   return response.data;
 }

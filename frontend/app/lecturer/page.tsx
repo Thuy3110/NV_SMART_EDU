@@ -1,6 +1,13 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import * as XLSX from "xlsx";
 import {
   AlertCircle,
@@ -25,6 +32,12 @@ import {
   saveCourseAssessments,
 } from "@/services/lecturer-assessment.service";
 
+type PendingStudentScore = {
+  studentCode: string;
+  cloId: number;
+  score: number;
+};
+
 function getErrorMessage(cause: unknown, fallback: string) {
   if (
     typeof cause === "object" &&
@@ -47,11 +60,16 @@ function getErrorMessage(cause: unknown, fallback: string) {
 export default function LecturerPortalPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [years, setYears] = useState<number[]>([]);
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(
+    new Date().getFullYear(),
+  );
   const [portalData, setPortalData] = useState<MyCoursesResponse | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const selectedCourseIdRef = useRef<number | null>(null);
   const [draftRates, setDraftRates] = useState<Record<number, string>>({});
+  const [pendingStudentScores, setPendingStudentScores] = useState<
+    PendingStudentScore[]
+  >([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [notice, setNotice] = useState<string>("");
@@ -90,51 +108,72 @@ export default function LecturerPortalPage() {
     setDraftRates(draft);
   }, []);
 
-  const selectCourse = useCallback((course: MyAssignedCourse) => {
-    selectedCourseIdRef.current = course.id;
-    setSelectedCourseId(course.id);
-    setNotice("");
-    setError("");
-    setExcelSummary(null);
-    initDraftRates(course);
-  }, [initDraftRates]);
+  const selectCourse = useCallback(
+    (course: MyAssignedCourse) => {
+      selectedCourseIdRef.current = course.id;
+      setSelectedCourseId(course.id);
+      setNotice("");
+      setError("");
+      setExcelSummary(null);
+      setPendingStudentScores([]);
+      initDraftRates(course);
+    },
+    [initDraftRates],
+  );
 
   // 2. Tải danh sách môn học của giảng viên
-  const loadMyCourses = useCallback(async (year: number) => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await getMyAssignedCourses(year);
-      setPortalData(res);
-      const requestedCourseId = Number(new URLSearchParams(window.location.search).get("courseId"));
-      const requestedCourse = Number.isInteger(requestedCourseId)
-        ? res.courses.find((course) => course.id === requestedCourseId)
-        : undefined;
-      if (requestedCourse) {
-        selectCourse(requestedCourse);
-      } else if (requestedCourseId > 0) {
-        if (res.courses[0]) selectCourse(res.courses[0]);
-        setError("Học phần được chọn không có trong danh sách hiện có của tài khoản.");
-      } else if (res.courses.length > 0) {
-        // Giữ môn đang chọn nếu hợp lệ, ngược lại chọn môn đầu tiên
-        if (!selectedCourseIdRef.current || !res.courses.some((c) => c.id === selectedCourseIdRef.current)) {
-          selectCourse(res.courses[0]);
+  const loadMyCourses = useCallback(
+    async (year: number) => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await getMyAssignedCourses(year);
+        setPortalData(res);
+        const requestedCourseId = Number(
+          new URLSearchParams(window.location.search).get("courseId"),
+        );
+        const requestedCourse = Number.isInteger(requestedCourseId)
+          ? res.courses.find((course) => course.id === requestedCourseId)
+          : undefined;
+        if (requestedCourse) {
+          selectCourse(requestedCourse);
+        } else if (requestedCourseId > 0) {
+          if (res.courses[0]) selectCourse(res.courses[0]);
+          setError(
+            "Học phần được chọn không có trong danh sách hiện có của tài khoản.",
+          );
+        } else if (res.courses.length > 0) {
+          // Giữ môn đang chọn nếu hợp lệ, ngược lại chọn môn đầu tiên
+          if (
+            !selectedCourseIdRef.current ||
+            !res.courses.some((c) => c.id === selectedCourseIdRef.current)
+          ) {
+            selectCourse(res.courses[0]);
+          } else {
+            const current = res.courses.find(
+              (c) => c.id === selectedCourseIdRef.current,
+            );
+            if (current) initDraftRates(current);
+          }
         } else {
-          const current = res.courses.find((c) => c.id === selectedCourseIdRef.current);
-          if (current) initDraftRates(current);
+          selectedCourseIdRef.current = null;
+          setSelectedCourseId(null);
+          setDraftRates({});
         }
-      } else {
-        selectedCourseIdRef.current = null;
-        setSelectedCourseId(null);
-        setDraftRates({});
+      } catch (err) {
+        console.error("Lỗi tải danh sách học phần:", err);
+        setError(
+          getErrorMessage(
+            err,
+            "Không tải được danh sách học phần được phân công.",
+          ),
+        );
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Lỗi tải danh sách học phần:", err);
-      setError(getErrorMessage(err, "Không tải được danh sách học phần được phân công."));
-    } finally {
-      setLoading(false);
-    }
-  }, [initDraftRates, selectCourse]);
+    },
+    [initDraftRates, selectCourse],
+  );
 
   useEffect(() => {
     if (selectedYear) {
@@ -151,7 +190,8 @@ export default function LecturerPortalPage() {
   // Thống kê tiến độ
   const stats = useMemo(() => {
     const total = portalData?.courses.length ?? 0;
-    const completed = portalData?.courses.filter((c) => c.isEvaluated).length ?? 0;
+    const completed =
+      portalData?.courses.filter((c) => c.isEvaluated).length ?? 0;
     const pending = total - completed;
     return { total, completed, pending };
   }, [portalData]);
@@ -159,6 +199,13 @@ export default function LecturerPortalPage() {
   // Thay đổi % CLO thủ công
   const handleRateChange = (cloId: number, val: string) => {
     setDraftRates((prev) => ({ ...prev, [cloId]: val }));
+    if (pendingStudentScores.length > 0) {
+      setPendingStudentScores([]);
+      setExcelSummary(null);
+      setNotice(
+        "Đã chuyển sang nhập tỷ lệ thủ công. Tải lại bảng điểm nếu muốn cập nhật điểm từng sinh viên.",
+      );
+    }
   };
 
   // 3. Tải file mẫu Excel động theo môn học
@@ -167,16 +214,40 @@ export default function LecturerPortalPage() {
     const workbook = XLSX.utils.book_new();
 
     // Tiêu đề cột
-    const headers = ["STT", "MaSV", "HoVaTen", ...currentCourse.clos.map((c) => c.code), "GhiChu"];
+    const headers = [
+      "STT",
+      "MaSV",
+      "HoVaTen",
+      ...currentCourse.clos.map((c) => c.code),
+      "GhiChu",
+    ];
 
     const aoaData = [
-      [`BẢNG ĐIỂM HỌC PHẦN: ${currentCourse.name.toUpperCase()} (${currentCourse.code})`],
-      [`Ngành: ${currentCourse.major.name} | Năm học: ${selectedYear} | Thang điểm: 0 - 10 (Điểm >= 5.0 là Đạt CLO)`],
+      [
+        `BẢNG ĐIỂM HỌC PHẦN: ${currentCourse.name.toUpperCase()} (${currentCourse.code})`,
+      ],
+      [
+        `Ngành: ${currentCourse.major.name} | Năm học: ${selectedYear} | Sinh viên đăng ký: ${currentCourse.students.length} | Thang điểm: 0 - 10 (Điểm >= 5.0 là Đạt CLO)`,
+      ],
       [],
       headers,
+      ...currentCourse.students.map((student, index) => [
+        index + 1,
+        student.studentCode,
+        student.fullName,
+        ...currentCourse.clos.map(() => ""),
+        "",
+      ]),
     ];
 
     const worksheet = XLSX.utils.aoa_to_sheet(aoaData);
+    currentCourse.clos.forEach((clo, index) => {
+      const address = XLSX.utils.encode_cell({ r: 3, c: index + 3 });
+      const headerCell = worksheet[address];
+      if (headerCell) {
+        headerCell.c = [{ a: "NV-SMART EDU", t: clo.description }];
+      }
+    });
 
     // Độ rộng cột
     worksheet["!cols"] = [
@@ -187,12 +258,29 @@ export default function LecturerPortalPage() {
       { wch: 20 },
     ];
 
+    const cloDescriptions = XLSX.utils.aoa_to_sheet([
+      ["Mã CLO", "Nội dung CLO"],
+      ...currentCourse.clos.map((clo) => [clo.code, clo.description]),
+    ]);
+    cloDescriptions["!cols"] = [
+      { wch: 16 },
+      {
+        wch: Math.min(
+          100,
+          Math.max(32, ...currentCourse.clos.map((clo) => clo.description.length)),
+        ),
+      },
+    ];
+
     XLSX.utils.book_append_sheet(workbook, worksheet, "BANG_DIEM_CLO");
+    XLSX.utils.book_append_sheet(workbook, cloDescriptions, "NOI_DUNG_CLO");
     XLSX.writeFile(workbook, `Mau-nhap-diem-${currentCourse.code}.xlsx`);
   };
 
   // 4. Đọc file Excel bảng điểm sinh viên và tự động tính tỷ lệ % CLO
-  const handleUploadStudentScores = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleUploadStudentScores = async (
+    e: ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !currentCourse) return;
@@ -200,6 +288,7 @@ export default function LecturerPortalPage() {
     setError("");
     setNotice("");
     setExcelSummary(null);
+    setPendingStudentScores([]);
 
     try {
       const buffer = await file.arrayBuffer();
@@ -209,16 +298,33 @@ export default function LecturerPortalPage() {
       if (!sheet) throw new Error("File Excel không có nội dung.");
 
       // Nhận diện dòng header
-      const rawHeaderRows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+      const rawHeaderRows = XLSX.utils.sheet_to_json<string[]>(sheet, {
+        header: 1,
+      });
       let headerRowIndex = rawHeaderRows.findIndex((row) =>
         row.some((cell) => {
-          const str = String(cell || "").toLowerCase().replace(/[\s_]/g, "");
+          const str = String(cell || "")
+            .toLowerCase()
+            .replace(/[\s_]/g, "");
           return str === "masv" || str === "studentcode" || str === "mssv";
-        })
+        }),
       );
       if (headerRowIndex === -1) headerRowIndex = 0;
 
-      const actualHeaders = (rawHeaderRows[headerRowIndex] || []).map((h) => String(h || "").trim());
+      const actualHeaders = (rawHeaderRows[headerRowIndex] || []).map((h) =>
+        String(h || "").trim(),
+      );
+      const studentCodeColumnIndex = actualHeaders.findIndex((header) => {
+        const normalized = header.toLowerCase().replace(/[\s_]/g, "");
+        return (
+          normalized === "masv" ||
+          normalized === "studentcode" ||
+          normalized === "mssv"
+        );
+      });
+      if (studentCodeColumnIndex === -1) {
+        throw new Error("File thiếu cột mã sinh viên (MaSV/StudentCode).");
+      }
       const sampleNoteColumn = actualHeaders.findIndex(
         (header) => header.toLowerCase().replace(/[\s_]/g, "") === "ghichu",
       );
@@ -230,17 +336,21 @@ export default function LecturerPortalPage() {
       const cloColIndexes: Record<string, number> = {};
       for (const clo of currentCourse.clos) {
         const idx = actualHeaders.findIndex(
-          (h) => h.toUpperCase() === clo.code.toUpperCase() || h.toUpperCase().includes(clo.code.toUpperCase())
+          (h) =>
+            h.toUpperCase() === clo.code.toUpperCase() ||
+            h.toUpperCase().includes(clo.code.toUpperCase()),
         );
         if (idx !== -1) {
           cloColIndexes[clo.code] = idx;
         }
       }
 
-      const missingClos = currentCourse.clos.filter((clo) => cloColIndexes[clo.code] === undefined);
+      const missingClos = currentCourse.clos.filter(
+        (clo) => cloColIndexes[clo.code] === undefined,
+      );
       if (missingClos.length > 0) {
         throw new Error(
-          `File thiếu cột CLO: ${missingClos.map((clo) => clo.code).join(", ")}. Vui lòng dùng file mẫu của học phần này.`
+          `File thiếu cột CLO: ${missingClos.map((clo) => clo.code).join(", ")}. Vui lòng dùng file mẫu của học phần này.`,
         );
       }
 
@@ -252,57 +362,105 @@ export default function LecturerPortalPage() {
         totalCount: number;
         rate: number;
       }> = [];
+      const pendingScores: PendingStudentScore[] = [];
+      const seenStudentCodes = new Set<string>();
+      const countsByClo = new Map<
+        number,
+        { passCount: number; totalCount: number }
+      >();
 
       const newDraft = { ...draftRates };
 
-      for (const clo of currentCourse.clos) {
-        const colIdx = cloColIndexes[clo.code];
-        if (colIdx === undefined) continue;
-
-        let totalValid = 0;
-        let passCount = 0;
-
-        for (const [rowIndex, row] of dataRows.entries()) {
-          if (
-            sampleNoteColumn !== -1 &&
-            String(row[sampleNoteColumn] ?? "").toLowerCase().includes("mẫu ví dụ")
-          ) {
-            continue;
-          }
+      for (const [rowIndex, row] of dataRows.entries()) {
+        if (
+          sampleNoteColumn !== -1 &&
+          String(row[sampleNoteColumn] ?? "")
+            .toLowerCase()
+            .includes("mẫu ví dụ")
+        ) {
+          continue;
+        }
+        const studentCode = String(row[studentCodeColumnIndex] ?? "").trim();
+        const rowScores: Array<{
+          cloId: number;
+          score: number;
+        }> = [];
+        for (const clo of currentCourse.clos) {
+          const colIdx = cloColIndexes[clo.code];
+          if (colIdx === undefined) continue;
           const rawVal = row[colIdx];
-          if (rawVal === undefined || rawVal === null || String(rawVal).trim() === "") continue;
+          if (
+            rawVal === undefined ||
+            rawVal === null ||
+            String(rawVal).trim() === ""
+          )
+            continue;
 
           // Bỏ qua các dòng hướng dẫn từ những file mẫu cũ.
-          if (String(rawVal).includes("Mô tả") || String(rawVal) === "--") continue;
+          if (String(rawVal).includes("Mô tả") || String(rawVal) === "--")
+            continue;
 
           const num = Number(String(rawVal).replace(",", "."));
           if (!Number.isFinite(num) || num < 0 || num > 10) {
-            throw new Error(`Dòng ${headerRowIndex + rowIndex + 2}, cột ${clo.code}: điểm phải là số từ 0 đến 10.`);
+            throw new Error(
+              `Dòng ${headerRowIndex + rowIndex + 2}, cột ${clo.code}: điểm phải là số từ 0 đến 10.`,
+            );
           }
-          totalValid++;
-          if (num >= passThreshold) {
-            passCount++;
-          }
+          rowScores.push({ cloId: clo.id, score: num });
         }
 
-        if (totalValid > 0) {
-          const rate = Number(((passCount / totalValid) * 100).toFixed(2));
-          results.push({
-            cloCode: clo.code,
-            passCount,
-            totalCount: totalValid,
-            rate,
-          });
-          newDraft[clo.id] = String(rate);
+        if (rowScores.length === 0) continue;
+        if (!studentCode) {
+          throw new Error(
+            `Dòng ${headerRowIndex + rowIndex + 2}: có điểm CLO nhưng thiếu mã sinh viên.`,
+          );
         }
+        const normalizedStudentCode = studentCode.toUpperCase();
+        if (seenStudentCodes.has(normalizedStudentCode)) {
+          throw new Error(`Mã sinh viên ${studentCode} bị lặp trong file.`);
+        }
+        seenStudentCodes.add(normalizedStudentCode);
+
+        for (const rowScore of rowScores) {
+          pendingScores.push({
+            studentCode,
+            cloId: rowScore.cloId,
+            score: rowScore.score,
+          });
+          const count = countsByClo.get(rowScore.cloId) ?? {
+            passCount: 0,
+            totalCount: 0,
+          };
+          count.totalCount++;
+          if (rowScore.score >= passThreshold) count.passCount++;
+          countsByClo.set(rowScore.cloId, count);
+        }
+      }
+
+      for (const clo of currentCourse.clos) {
+        const count = countsByClo.get(clo.id);
+        if (!count || count.totalCount === 0) continue;
+        const rate = Number(
+          ((count.passCount / count.totalCount) * 100).toFixed(2),
+        );
+        results.push({
+          cloCode: clo.code,
+          passCount: count.passCount,
+          totalCount: count.totalCount,
+          rate,
+        });
+        newDraft[clo.id] = String(rate);
       }
 
       if (results.length === 0) {
-        throw new Error("File chưa có dòng điểm hợp lệ. Hãy nhập điểm sinh viên rồi tải lại.");
+        throw new Error(
+          "File chưa có dòng điểm hợp lệ. Hãy nhập điểm sinh viên rồi tải lại.",
+        );
       }
 
-      const studentCount = Math.max(...results.map((r) => r.totalCount), 0);
+      const studentCount = seenStudentCodes.size;
       setDraftRates(newDraft);
+      setPendingStudentScores(pendingScores);
       setExcelSummary({
         fileName: file.name,
         studentCount,
@@ -310,7 +468,7 @@ export default function LecturerPortalPage() {
       });
 
       setNotice(
-        `Đã đọc thành công bảng điểm của ${studentCount} sinh viên và tự động tính tỷ lệ % cho ${results.length} chuẩn đầu ra (CLO).`
+        `Đã đọc bảng điểm của ${studentCount} sinh viên. Khi lưu, hệ thống sẽ cập nhật cả tỷ lệ CLO và điểm từng sinh viên.`,
       );
     } catch (err) {
       console.error("Lỗi đọc file Excel bảng điểm:", err);
@@ -338,7 +496,10 @@ export default function LecturerPortalPage() {
 
       // Kiểm tra hợp lệ
       for (const a of assessments) {
-        if (a.attainmentRate !== null && (a.attainmentRate < 0 || a.attainmentRate > 100)) {
+        if (
+          a.attainmentRate !== null &&
+          (a.attainmentRate < 0 || a.attainmentRate > 100)
+        ) {
           throw new Error("Tỷ lệ đạt phải nằm trong khoảng từ 0% đến 100%.");
         }
       }
@@ -347,9 +508,14 @@ export default function LecturerPortalPage() {
         courseId: currentCourse.id,
         academicYear: selectedYear,
         assessments,
+        ...(pendingStudentScores.length > 0
+          ? { studentScores: pendingStudentScores }
+          : {}),
       });
 
       setNotice(res.message);
+      setPendingStudentScores([]);
+      setExcelSummary(null);
       await loadMyCourses(selectedYear);
     } catch (err) {
       console.error("Lỗi lưu đánh giá học phần:", err);
@@ -370,12 +536,29 @@ export default function LecturerPortalPage() {
       ["BÁO CÁO KẾT QUẢ ĐÁNH GIÁ CHUẨN ĐẦU RA HỌC PHẦN (CLO)"],
       ["HỌC PHẦN:", currentCourse.name, "MÃ HỌC PHẦN:", currentCourse.code],
       ["NGÀNH ĐÀO TẠO:", currentCourse.major.name, "NĂM HỌC:", selectedYear],
-      ["GIẢNG VIÊN ĐÁNH GIÁ:", portalData?.lecturer.fullName || "Giảng viên", "NGƯỠNG ĐẠT CHUẨN:", `${threshold}%`],
+      [
+        "GIẢNG VIÊN ĐÁNH GIÁ:",
+        portalData?.lecturer.fullName || "Giảng viên",
+        "NGƯỠNG ĐẠT CHUẨN:",
+        `${threshold}%`,
+      ],
       [],
-      ["STT", "Mã CLO", "Mô tả Chuẩn đầu ra", "Tỷ lệ đạt của Giảng viên (%)", "Tỷ lệ đạt bình quân môn (%)", "Kết quả"],
+      [
+        "STT",
+        "Mã CLO",
+        "Mô tả Chuẩn đầu ra",
+        "Tỷ lệ đạt của Giảng viên (%)",
+        "Tỷ lệ đạt bình quân môn (%)",
+        "Kết quả",
+      ],
       ...currentCourse.clos.map((clo, idx) => {
         const rate = clo.myRate;
-        const status = rate === null ? "Chưa đánh giá" : rate >= threshold ? "ĐẠT" : "CHƯA ĐẠT";
+        const status =
+          rate === null
+            ? "Chưa đánh giá"
+            : rate >= threshold
+              ? "ĐẠT"
+              : "CHƯA ĐẠT";
         return [
           idx + 1,
           clo.code,
@@ -398,7 +581,10 @@ export default function LecturerPortalPage() {
     ];
 
     XLSX.utils.book_append_sheet(workbook, worksheet, "BAO_CAO_CLO");
-    XLSX.writeFile(workbook, `Bao-cao-danh-gia-CLO-${currentCourse.code}-${selectedYear}.xlsx`);
+    XLSX.writeFile(
+      workbook,
+      `Bao-cao-danh-gia-CLO-${currentCourse.code}-${selectedYear}.xlsx`,
+    );
   };
 
   return (
@@ -416,7 +602,8 @@ export default function LecturerPortalPage() {
                 Xin chào, {portalData?.lecturer.fullName || "Quý Giảng viên"}!
               </h1>
               <p className="mt-1 text-sm text-blue-100">
-                Đánh giá mức độ đạt Chuẩn đầu ra (CLO) cho các học phần mà Quý Thầy/Cô trực tiếp phụ trách giảng dạy.
+                Đánh giá mức độ đạt Chuẩn đầu ra (CLO) cho các học phần mà Quý
+                Thầy/Cô trực tiếp phụ trách giảng dạy.
               </p>
             </div>
 
@@ -424,7 +611,9 @@ export default function LecturerPortalPage() {
             <div className="flex items-center gap-3 rounded-xl bg-white/10 p-3 backdrop-blur-md">
               <Calendar size={20} className="text-amber-300 shrink-0" />
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-blue-200">Năm học đánh giá</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
+                  Năm học đánh giá
+                </p>
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -437,7 +626,8 @@ export default function LecturerPortalPage() {
                   ))}
                   {!years.includes(new Date().getFullYear()) && (
                     <option value={new Date().getFullYear()}>
-                      Năm học {new Date().getFullYear()} - {new Date().getFullYear() + 1}
+                      Năm học {new Date().getFullYear()} -{" "}
+                      {new Date().getFullYear() + 1}
                     </option>
                   )}
                 </select>
@@ -452,7 +642,9 @@ export default function LecturerPortalPage() {
                 <BookOpen size={22} />
               </div>
               <div>
-                <p className="text-xs text-blue-100 font-medium">Học phần phụ trách</p>
+                <p className="text-xs text-blue-100 font-medium">
+                  Học phần phụ trách
+                </p>
                 <p className="text-2xl font-black">{stats.total} môn</p>
               </div>
             </div>
@@ -462,7 +654,9 @@ export default function LecturerPortalPage() {
                 <CheckCircle2 size={22} />
               </div>
               <div>
-                <p className="text-xs text-emerald-100 font-medium">Đã hoàn thành đánh giá</p>
+                <p className="text-xs text-emerald-100 font-medium">
+                  Đã hoàn thành đánh giá
+                </p>
                 <p className="text-2xl font-black">{stats.completed} môn</p>
               </div>
             </div>
@@ -472,7 +666,9 @@ export default function LecturerPortalPage() {
                 <Clock size={22} />
               </div>
               <div>
-                <p className="text-xs text-amber-100 font-medium">Chưa hoàn thành</p>
+                <p className="text-xs text-amber-100 font-medium">
+                  Chưa hoàn thành
+                </p>
                 <p className="text-2xl font-black">{stats.pending} môn</p>
               </div>
             </div>
@@ -509,16 +705,22 @@ export default function LecturerPortalPage() {
                   className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
                   title="Làm mới danh sách"
                 >
-                  <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+                  <RefreshCw
+                    size={15}
+                    className={loading ? "animate-spin" : ""}
+                  />
                 </button>
               </div>
 
               {loading ? (
-                <div className="py-12 text-center text-sm text-slate-500">Đang tải danh sách học phần...</div>
+                <div className="py-12 text-center text-sm text-slate-500">
+                  Đang tải danh sách học phần...
+                </div>
               ) : portalData?.courses.length === 0 ? (
                 <div className="py-10 text-center text-sm text-slate-500">
                   <BookOpen size={36} className="mx-auto mb-2 text-slate-300" />
-                  Chưa có học phần nào được phân công trong năm học {selectedYear}.
+                  Chưa có học phần nào được phân công trong năm học{" "}
+                  {selectedYear}.
                 </div>
               ) : (
                 <div className="mt-3 space-y-2">
@@ -550,13 +752,17 @@ export default function LecturerPortalPage() {
                             </span>
                           ) : (
                             <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                              <Clock size={12} /> {course.evaluatedCloCount}/{course.totalCloCount} CLO
+                              <Clock size={12} /> {course.evaluatedCloCount}/
+                              {course.totalCloCount} CLO
                             </span>
                           )}
                         </div>
 
                         <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500 border-t border-slate-100/80 pt-2">
-                          <span>{course.credits} tín chỉ • HK {course.semester || "Chưa xếp"}</span>
+                          <span>
+                            {course.credits} tín chỉ • HK{" "}
+                            {course.semester || "Chưa xếp"}
+                          </span>
                           <span className="truncate max-w-[140px] text-slate-600 font-medium">
                             {course.major.code}
                           </span>
@@ -588,8 +794,14 @@ export default function LecturerPortalPage() {
                       {currentCourse.name}
                     </h2>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      Số tín chỉ: <strong className="text-slate-700">{currentCourse.credits}</strong> • Số chuẩn đầu ra:{" "}
-                      <strong className="text-slate-700">{currentCourse.clos.length} CLO</strong>
+                      Số tín chỉ:{" "}
+                      <strong className="text-slate-700">
+                        {currentCourse.credits}
+                      </strong>{" "}
+                      • Số chuẩn đầu ra:{" "}
+                      <strong className="text-slate-700">
+                        {currentCourse.clos.length} CLO
+                      </strong>
                     </p>
                   </div>
 
@@ -607,7 +819,7 @@ export default function LecturerPortalPage() {
 
                     <label
                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 shadow-sm hover:bg-emerald-100"
-                      title="Tải lên bảng điểm lớp để hệ thống tự động tính % đạt CLO"
+                      title="Tải bảng điểm để tính tỷ lệ CLO và đồng bộ điểm từng sinh viên sau khi lưu"
                     >
                       <Upload size={14} className="text-emerald-700" />
                       Tải bảng điểm lớp
@@ -649,9 +861,16 @@ export default function LecturerPortalPage() {
 
                     <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                       {excelSummary.results.map((r) => (
-                        <div key={r.cloCode} className="rounded-lg bg-white p-2.5 shadow-sm border border-emerald-100">
-                          <p className="text-xs font-bold text-slate-600">{r.cloCode}</p>
-                          <p className="text-lg font-black text-emerald-700">{r.rate}%</p>
+                        <div
+                          key={r.cloCode}
+                          className="rounded-lg bg-white p-2.5 shadow-sm border border-emerald-100"
+                        >
+                          <p className="text-xs font-bold text-slate-600">
+                            {r.cloCode}
+                          </p>
+                          <p className="text-lg font-black text-emerald-700">
+                            {r.rate}%
+                          </p>
                           <p className="text-[11px] text-slate-500">
                             {r.passCount}/{r.totalCount} SV đạt
                           </p>
@@ -668,7 +887,8 @@ export default function LecturerPortalPage() {
                       Danh sách Chuẩn đầu ra (CLO) & Tỷ lệ đạt
                     </h3>
                     <span className="text-xs text-slate-500">
-                      Ngưỡng đạt khuyến nghị: <strong className="text-blue-700">75%</strong>
+                      Ngưỡng đạt khuyến nghị:{" "}
+                      <strong className="text-blue-700">75%</strong>
                     </span>
                   </div>
 
@@ -684,17 +904,23 @@ export default function LecturerPortalPage() {
                             <th className="px-4 py-3 w-12 text-center">STT</th>
                             <th className="px-4 py-3 w-28">Mã CLO</th>
                             <th className="px-4 py-3">Mô tả chuẩn đầu ra</th>
-                            <th className="px-4 py-3 w-32 text-center">Tỷ lệ đạt bộ môn</th>
-                            <th className="px-4 py-3 w-44 text-center">
-                              Tỷ lệ của bạn (%) <span className="text-red-500">*</span>
+                            <th className="px-4 py-3 w-32 text-center">
+                              Tỷ lệ đạt bộ môn
                             </th>
-                            <th className="px-4 py-3 w-28 text-center">Kết quả</th>
+                            <th className="px-4 py-3 w-44 text-center">
+                              Tỷ lệ của bạn (%){" "}
+                              <span className="text-red-500">*</span>
+                            </th>
+                            <th className="px-4 py-3 w-28 text-center">
+                              Kết quả
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {currentCourse.clos.map((clo, index) => {
                             const valStr = draftRates[clo.id] ?? "";
-                            const valNum = valStr === "" ? null : Number(valStr);
+                            const valNum =
+                              valStr === "" ? null : Number(valStr);
                             const isPassed = valNum !== null && valNum >= 75;
 
                             return (
@@ -729,10 +955,14 @@ export default function LecturerPortalPage() {
                                       step="0.1"
                                       placeholder="0 - 100"
                                       value={valStr}
-                                      onChange={(e) => handleRateChange(clo.id, e.target.value)}
+                                      onChange={(e) =>
+                                        handleRateChange(clo.id, e.target.value)
+                                      }
                                       className="w-24 rounded-lg border border-slate-300 px-2.5 py-1.5 text-center text-sm font-bold text-slate-800 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
                                     />
-                                    <span className="text-xs font-semibold text-slate-500">%</span>
+                                    <span className="text-xs font-semibold text-slate-500">
+                                      %
+                                    </span>
                                   </div>
                                 </td>
                                 <td className="px-4 py-3 text-center whitespace-nowrap">
